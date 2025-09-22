@@ -50,7 +50,16 @@ export default function WasteDetectionApp() {
       setIsLoadingCameras(true)
       setError(null)
 
-      await navigator.mediaDevices.getUserMedia({ video: true })
+      const permissionStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      })
+
+      // Stop the permission stream immediately
+      permissionStream.getTracks().forEach((track) => track.stop())
 
       const devices = await navigator.mediaDevices.enumerateDevices()
       const videoDevices = devices
@@ -67,11 +76,29 @@ export default function WasteDetectionApp() {
         (camera) =>
           camera.label.toLowerCase().includes("back") ||
           camera.label.toLowerCase().includes("rear") ||
-          camera.label.toLowerCase().includes("environment"),
+          camera.label.toLowerCase().includes("environment") ||
+          camera.label.toLowerCase().includes("0"), // Often the back camera on mobile
       )
       setSelectedCamera(backCamera?.deviceId || videoDevices[0]?.deviceId || "")
     } catch (err) {
-      setError("Failed to access cameras. Please ensure camera permissions are granted.")
+      console.error("[v0] Camera access error:", err)
+      if (err instanceof Error) {
+        if (err.name === "NotAllowedError") {
+          setError(
+            "Camera access denied. Please allow camera permissions in your browser settings and refresh the page.",
+          )
+        } else if (err.name === "NotFoundError") {
+          setError("No cameras found on this device.")
+        } else if (err.name === "NotSupportedError") {
+          setError("Camera access is not supported on this device or browser.")
+        } else {
+          setError(
+            "Failed to access cameras. Please ensure camera permissions are granted and try refreshing the page.",
+          )
+        }
+      } else {
+        setError("Failed to access cameras. Please ensure camera permissions are granted.")
+      }
     } finally {
       setIsLoadingCameras(false)
     }
@@ -84,18 +111,61 @@ export default function WasteDetectionApp() {
   const startCamera = useCallback(async () => {
     try {
       setError(null)
+
       const constraints = {
-        video: selectedCamera ? { deviceId: { exact: selectedCamera } } : { facingMode: "environment" },
+        video: selectedCamera
+          ? {
+              deviceId: { exact: selectedCamera },
+              width: { ideal: 1280, max: 1920 },
+              height: { ideal: 720, max: 1080 },
+              facingMode: selectedCamera ? undefined : "environment",
+            }
+          : {
+              facingMode: "environment",
+              width: { ideal: 1280, max: 1920 },
+              height: { ideal: 720, max: 1080 },
+            },
       }
 
+      console.log("[v0] Starting camera with constraints:", constraints)
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
       streamRef.current = stream
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream
-        setIsCapturing(true)
+        videoRef.current.onloadedmetadata = () => {
+          console.log("[v0] Video metadata loaded")
+          setIsCapturing(true)
+        }
       }
     } catch (err) {
-      setError("Failed to access camera. Please ensure camera permissions are granted.")
+      console.error("[v0] Camera start error:", err)
+      if (err instanceof Error) {
+        if (err.name === "NotAllowedError") {
+          setError("Camera access denied. Please allow camera permissions and try again.")
+        } else if (err.name === "NotFoundError") {
+          setError("Selected camera not found. Please try a different camera.")
+        } else if (err.name === "OverconstrainedError") {
+          setError("Camera constraints not supported. Trying with basic settings...")
+          try {
+            const basicStream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: "environment" },
+            })
+            streamRef.current = basicStream
+            if (videoRef.current) {
+              videoRef.current.srcObject = basicStream
+              videoRef.current.onloadedmetadata = () => setIsCapturing(true)
+            }
+            setError(null)
+          } catch (fallbackErr) {
+            setError("Failed to access camera with basic settings.")
+          }
+        } else {
+          setError("Failed to access camera. Please try again.")
+        }
+      } else {
+        setError("Failed to access camera. Please ensure camera permissions are granted.")
+      }
     }
   }, [selectedCamera])
 
@@ -164,7 +234,7 @@ export default function WasteDetectionApp() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
       <div className="max-w-4xl mx-auto space-y-6">
-        {/* <div className="text-center space-y-3 py-8">
+        <div className="text-center space-y-3 py-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-full mb-4">
             <Camera className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
           </div>
@@ -174,7 +244,7 @@ export default function WasteDetectionApp() {
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Capture images using your camera to detect and classify waste items with advanced AI technology
           </p>
-        </div> */}
+        </div>
 
         {error && (
           <Alert variant="destructive" className="border-red-200 dark:border-red-800">
@@ -236,13 +306,16 @@ export default function WasteDetectionApp() {
                       <Camera className="h-10 w-10 text-slate-400" />
                     </div>
                     <p className="text-slate-500 dark:text-slate-400">Ready to capture</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 max-w-xs mx-auto">
+                      Make sure to allow camera permissions when prompted
+                    </p>
                   </div>
                 </div>
                 <Button
                   onClick={startCamera}
                   size="lg"
                   className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 text-lg"
-                  disabled={!selectedCamera}
+                  disabled={!selectedCamera && cameras.length > 0}
                 >
                   <Camera className="mr-2 h-5 w-5" />
                   Start Camera
@@ -347,7 +420,7 @@ export default function WasteDetectionApp() {
 
         {results && (
           <Card className="border-0 shadow-lg bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
-            {/* <CardHeader>
+            <CardHeader>
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
                   <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -357,7 +430,7 @@ export default function WasteDetectionApp() {
                   <CardDescription>AI-powered waste detection analysis results</CardDescription>
                 </div>
               </div>
-            </CardHeader> */}
+            </CardHeader>
             <CardContent>
               {results.predictions.length === 0 ? (
                 <div className="text-center py-12">
