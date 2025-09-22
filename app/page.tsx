@@ -234,7 +234,7 @@ export default function WasteDetectionApp() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
       <div className="max-w-4xl mx-auto space-y-6">
-        <div className="text-center space-y-3 py-8">
+        {/* <div className="text-center space-y-3 py-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-full mb-4">
             <Camera className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
           </div>
@@ -244,7 +244,7 @@ export default function WasteDetectionApp() {
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Capture images using your camera to detect and classify waste items with advanced AI technology
           </p>
-        </div>
+        </div> */}
 
         {error && (
           <Alert variant="destructive" className="border-red-200 dark:border-red-800">
@@ -300,7 +300,7 @@ export default function WasteDetectionApp() {
 
             {!isCapturing && !capturedImage && (
               <div className="text-center space-y-6">
-                <div className="w-full h-80 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 rounded-xl flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-600">
+                {/* <div className="w-full h-80 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 rounded-xl flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-600">
                   <div className="text-center space-y-4">
                     <div className="w-20 h-20 bg-slate-200 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto">
                       <Camera className="h-10 w-10 text-slate-400" />
@@ -310,7 +310,7 @@ export default function WasteDetectionApp() {
                       Make sure to allow camera permissions when prompted
                     </p>
                   </div>
-                </div>
+                </div> */}
                 <Button
                   onClick={startCamera}
                   size="lg"
