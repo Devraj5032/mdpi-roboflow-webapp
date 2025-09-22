@@ -111,6 +111,13 @@ export default function WasteDetectionApp() {
   const startCamera = useCallback(async () => {
     try {
       setError(null)
+      console.log("[v0] Starting camera...")
+
+      // Stop any existing stream before starting a new one
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop())
+        streamRef.current = null
+      }
 
       const constraints = {
         video: selectedCamera
@@ -130,14 +137,10 @@ export default function WasteDetectionApp() {
       console.log("[v0] Starting camera with constraints:", constraints)
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
       streamRef.current = stream
+      console.log("[v0] Got media stream:", stream)
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        videoRef.current.onloadedmetadata = () => {
-          console.log("[v0] Video metadata loaded")
-          setIsCapturing(true)
-        }
-      }
+      // Mount the video element first; an effect will attach and play the stream
+      setIsCapturing(true)
     } catch (err) {
       console.error("[v0] Camera start error:", err)
       if (err instanceof Error) {
@@ -154,7 +157,16 @@ export default function WasteDetectionApp() {
             streamRef.current = basicStream
             if (videoRef.current) {
               videoRef.current.srcObject = basicStream
-              videoRef.current.onloadedmetadata = () => setIsCapturing(true)
+              setIsCapturing(true)
+              videoRef.current.onloadedmetadata = async () => {
+                try {
+                  if (videoRef.current) {
+                    await videoRef.current.play()
+                  }
+                } catch (playError) {
+                  setError("Failed to start video preview with basic settings.")
+                }
+              }
             }
             setError(null)
           } catch (fallbackErr) {
@@ -169,12 +181,86 @@ export default function WasteDetectionApp() {
     }
   }, [selectedCamera])
 
+  // When the video element exists and we are capturing, attach the stream and play
+  useEffect(() => {
+    const attachAndPlay = async () => {
+      if (!isCapturing || !videoRef.current || !streamRef.current) return
+
+      try {
+        const video = videoRef.current
+        video.srcObject = streamRef.current
+        video.setAttribute("playsinline", "true")
+        video.muted = true
+        video.autoplay = true
+
+        video.oncanplay = () => {
+          console.log("[v0] Video can play")
+        }
+        video.onerror = (e) => {
+          console.error("[v0] Video error:", e)
+          setError("Video preview error. Please try again.")
+        }
+
+        if (video.readyState >= 1) {
+          await video.play()
+          console.log("[v0] Video playing immediately (effect)")
+        } else {
+          await new Promise<void>((resolve) => {
+            video.onloadedmetadata = async () => {
+              console.log("[v0] Video metadata loaded (effect)")
+              try {
+                await video.play()
+                console.log("[v0] Video playing successfully (effect)")
+              } catch (playError) {
+                console.error("[v0] Video play error (effect):", playError)
+                setError("Failed to start video preview. Please try again.")
+              }
+              resolve()
+            }
+          })
+        }
+      } catch (e) {
+        console.error("[v0] Error attaching/playing stream:", e)
+      }
+    }
+    attachAndPlay()
+  }, [isCapturing])
+
+  // Auto-restart the camera preview when switching cameras while capturing
+  useEffect(() => {
+    const restartOnSwitch = async () => {
+      if (isCapturing) {
+        try {
+          await startCamera()
+        } catch (e) {
+          // Error is already handled inside startCamera
+        }
+      }
+    }
+    restartOnSwitch()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCamera])
+
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop())
       streamRef.current = null
     }
+    if (videoRef.current) {
+      videoRef.current.pause()
+      videoRef.current.srcObject = null
+    }
     setIsCapturing(false)
+  }, [])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop())
+        streamRef.current = null
+      }
+    }
   }, [])
 
   const captureImage = useCallback(() => {
@@ -234,7 +320,7 @@ export default function WasteDetectionApp() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-4">
       <div className="max-w-4xl mx-auto space-y-6">
-        {/* <div className="text-center space-y-3 py-8">
+        <div className="text-center space-y-3 py-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-full mb-4">
             <Camera className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
           </div>
@@ -244,7 +330,7 @@ export default function WasteDetectionApp() {
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Capture images using your camera to detect and classify waste items with advanced AI technology
           </p>
-        </div> */}
+        </div>
 
         {error && (
           <Alert variant="destructive" className="border-red-200 dark:border-red-800">
@@ -300,7 +386,7 @@ export default function WasteDetectionApp() {
 
             {!isCapturing && !capturedImage && (
               <div className="text-center space-y-6">
-                {/* <div className="w-full h-80 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 rounded-xl flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-600">
+                <div className="w-full h-80 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 rounded-xl flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-600">
                   <div className="text-center space-y-4">
                     <div className="w-20 h-20 bg-slate-200 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto">
                       <Camera className="h-10 w-10 text-slate-400" />
@@ -310,7 +396,7 @@ export default function WasteDetectionApp() {
                       Make sure to allow camera permissions when prompted
                     </p>
                   </div>
-                </div> */}
+                </div>
                 <Button
                   onClick={startCamera}
                   size="lg"
@@ -326,7 +412,7 @@ export default function WasteDetectionApp() {
             {isCapturing && (
               <div className="space-y-6">
                 <div className="relative overflow-hidden rounded-xl">
-                  <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl shadow-lg" />
+                  <video ref={videoRef} autoPlay playsInline muted className="w-full rounded-xl shadow-lg" />
                   <div className="absolute inset-0 border-4 border-emerald-400/50 rounded-xl pointer-events-none"></div>
                 </div>
                 <div className="flex gap-3 justify-center">
@@ -479,7 +565,7 @@ export default function WasteDetectionApp() {
             </CardContent>
           </Card>
         )}
-      </div>
+      </div> 
     </div>
   )
 }

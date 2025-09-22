@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import axios from "axios"
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,30 +9,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No image provided" }, { status: 400 })
     }
 
-    // Extract base64 data from data URL
-    const base64Data = image.replace(/^data:image\/[a-z]+;base64,/, "")
+    const apiKey = "RcVRegIMRWGbSBG5P2Y9"
+    const endpoint = `https://serverless.roboflow.com/trash-detection-1fjjc-zbcef/1?api_key=${apiKey}`
 
-    // Make request to Roboflow API
-    const response = await fetch("https://serverless.roboflow.com/waste-detection-cbffo-foffi/1", {
-      method: "POST",
+    // Strip base64 header if present
+    const payloadImage = (image as string).replace(
+      /^data:image\/[a-zA-Z0-9+.-]+;base64,/,
+      ""
+    )
+
+    const response = await axios.post(endpoint, payloadImage, {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({
-        api_key: "JJXP81cU10vS9PXmL2iG",
-        image: base64Data,
-      }),
     })
 
-    if (!response.ok) {
-      throw new Error(`Roboflow API error: ${response.status}`)
-    }
-
-    const data = await response.json()
-
-    return NextResponse.json(data)
-  } catch (error) {
-    console.error("Analysis error:", error)
-    return NextResponse.json({ error: "Failed to analyze image" }, { status: 500 })
+    return NextResponse.json(response.data)
+  } catch (error: any) {
+    console.error("Analysis error:", error.message || error)
+    return NextResponse.json(
+      { error: "Failed to analyze image", details: error.message },
+      { status: 500 }
+    )
   }
 }
