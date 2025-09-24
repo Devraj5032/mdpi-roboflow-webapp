@@ -25,6 +25,8 @@ interface RoboflowResponse {
   }
 }
 
+type ModelResult = RoboflowResponse | { error: true; message: string }
+
 interface CameraDevice {
   deviceId: string
   label: string
@@ -35,7 +37,7 @@ export default function WasteDetectionApp() {
   const [isCapturing, setIsCapturing] = useState(false)
   const [capturedImage, setCapturedImage] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [results, setResults] = useState<RoboflowResponse | null>(null)
+  const [results, setResults] = useState<Record<string, ModelResult> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cameras, setCameras] = useState<CameraDevice[]>([])
   const [selectedCamera, setSelectedCamera] = useState<string>("")
@@ -302,7 +304,8 @@ export default function WasteDetectionApp() {
       }
 
       const data = await response.json()
-      setResults(data)
+      // API returns: { models: { [id]: result | {error} } }
+      setResults(data.models)
     } catch (err) {
       setError("Failed to analyze image. Please try again.")
     } finally {
@@ -439,12 +442,19 @@ export default function WasteDetectionApp() {
                     alt="Captured"
                     className="w-full rounded-xl shadow-lg"
                   />
-                  {results && results.predictions.length > 0 && (
+                  {(() => {
+                    if (!results) return null
+                    // pick first successful model result for overlay
+                    const firstOk = Object.values(results).find(
+                      (r) => !("error" in (r as any)) && (r as RoboflowResponse).predictions?.length > 0,
+                    ) as RoboflowResponse | undefined
+                    if (!firstOk) return null
+                    return (
                     <svg
                       className="absolute inset-0 w-full h-full"
-                      viewBox={`0 0 ${results.image.width} ${results.image.height}`}
+                      viewBox={`0 0 ${firstOk.image.width} ${firstOk.image.height}`}
                     >
-                      {results.predictions.map((detection, index) => (
+                      {firstOk.predictions.map((detection, index) => (
                         <g key={index}>
                           <rect
                             x={detection.x - detection.width / 2}
@@ -477,7 +487,8 @@ export default function WasteDetectionApp() {
                         </g>
                       ))}
                     </svg>
-                  )}
+                    )
+                  })()}
                 </div>
                 <div className="flex gap-3 justify-center">
                   <Button
@@ -518,50 +529,54 @@ export default function WasteDetectionApp() {
               </div>
             </CardHeader>
             <CardContent>
-              {results.predictions.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <AlertCircle className="h-8 w-8 text-slate-400" />
-                  </div>
-                  <p className="text-slate-500 dark:text-slate-400 text-lg">No waste items detected in this image.</p>
-                  <p className="text-sm text-slate-400 dark:text-slate-500 mt-2">
-                    Try capturing a different angle or better lighting.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant="secondary"
-                      className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
-                    >
-                      {results.predictions.length} item{results.predictions.length !== 1 ? "s" : ""} detected
-                    </Badge>
-                  </div>
-                  <div className="grid gap-4">
-                    {results.predictions.map((detection, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-700/50 dark:to-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-600"
-                      >
-                        <div className="space-y-2">
-                          <p className="font-semibold text-lg capitalize">{detection.class}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Position: ({Math.round(detection.x)}, {Math.round(detection.y)}) • Size:{" "}
-                            {Math.round(detection.width)}×{Math.round(detection.height)}px
-                          </p>
-                        </div>
-                        <Badge
-                          variant="secondary"
-                          className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 text-base px-3 py-1"
-                        >
-                          {Math.round(detection.confidence * 100)}% confident
-                        </Badge>
+              {(() => {
+                const allPreds: Detection[] = []
+                if (results) {
+                  Object.values(results).forEach((res) => {
+                    if (!("error" in (res as any))) {
+                      const rf = res as RoboflowResponse
+                      if (rf.predictions && rf.predictions.length > 0) {
+                        allPreds.push(...rf.predictions)
+                      }
+                    }
+                  })
+                }
+
+                if (allPreds.length === 0) {
+                  return (
+                    <div className="text-center py-12">
+                      <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <AlertCircle className="h-8 w-8 text-slate-400" />
                       </div>
-                    ))}
+                      <p className="text-slate-500 dark:text-slate-400 text-lg">No waste items detected in this image.</p>
+                      <p className="text-sm text-slate-400 dark:text-slate-500 mt-2">Try capturing a different angle or better lighting.</p>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
+                        {allPreds.length} item{allPreds.length !== 1 ? "s" : ""} detected
+                      </Badge>
+                    </div>
+                    <div className="grid gap-4">
+                      {allPreds.map((detection, index) => (
+                        <div key={index} className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-700/50 dark:to-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-600">
+                          <div className="space-y-2">
+                            <p className="font-semibold text-lg capitalize">{detection.class}</p>
+                            <p className="text-sm text-muted-foreground">Position: ({Math.round(detection.x)}, {Math.round(detection.y)}) • Size: {Math.round(detection.width)}×{Math.round(detection.height)}px</p>
+                          </div>
+                          <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 text-base px-3 py-1">
+                            {Math.round(detection.confidence * 100)}% confident
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              })()}
             </CardContent>
           </Card>
         )}
