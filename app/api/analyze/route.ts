@@ -9,11 +9,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No image provided" }, { status: 400 })
     }
 
-    // Define the three models and keys you want to query simultaneously
+    // Define the four models and keys you want to query simultaneously
     const models = [
       { id: "trash-detection-1fjjc-zbcef", apiKey: "RcVRegIMRWGbSBG5P2Y9" },
       { id: "firstsetwaste-xkrmc", apiKey: "RcVRegIMRWGbSBG5P2Y9" },
       { id: "waste-detection-cbffo-foffi", apiKey: "JJXP81cU10vS9PXmL2iG" },
+      { id: "organic-waste-xnpyb", apiKey: "JJXP81cU10vS9PXmL2iG" },
     ] as const
 
     // Strip base64 header if present
