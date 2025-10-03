@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Camera, Upload, Loader2, AlertCircle, Video, RotateCcw } from "lucide-react"
+import { Camera, Upload, Loader2, AlertCircle, Video, RotateCcw, FileImage } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 interface Detection {
@@ -46,6 +46,7 @@ export default function WasteDetectionApp() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const getCameras = useCallback(async () => {
     try {
@@ -313,11 +314,47 @@ export default function WasteDetectionApp() {
     }
   }, [capturedImage])
 
+  const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setError('Please select a valid image file.')
+      return
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Image file is too large. Please select an image smaller than 10MB.')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const result = e.target?.result as string
+      if (result) {
+        setCapturedImage(result)
+        setResults(null)
+        setError(null)
+        stopCamera() // Stop camera if it's running
+      }
+    }
+    reader.onerror = () => {
+      setError('Failed to read the selected file.')
+    }
+    reader.readAsDataURL(file)
+  }, [stopCamera])
+
   const reset = useCallback(() => {
     setCapturedImage(null)
     setResults(null)
     setError(null)
     stopCamera()
+    // Clear file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }, [stopCamera])
 
   return (
@@ -394,21 +431,39 @@ export default function WasteDetectionApp() {
                     <div className="w-20 h-20 bg-slate-200 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto">
                       <Camera className="h-10 w-10 text-slate-400" />
                     </div>
-                    <p className="text-slate-500 dark:text-slate-400">Ready to capture</p>
+                    <p className="text-slate-500 dark:text-slate-400">Ready to capture or upload</p>
                     <p className="text-xs text-slate-400 dark:text-slate-500 max-w-xs mx-auto">
-                      Make sure to allow camera permissions when prompted
+                      Use camera or upload an image from your device
                     </p>
                   </div>
                 </div>
-                <Button
-                  onClick={startCamera}
-                  size="lg"
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 text-lg"
-                  disabled={!selectedCamera && cameras.length > 0}
-                >
-                  <Camera className="mr-2 h-5 w-5" />
-                  Start Camera
-                </Button>
+                <div className="flex gap-3 justify-center">
+                  <Button
+                    onClick={startCamera}
+                    size="lg"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 text-lg"
+                    disabled={!selectedCamera && cameras.length > 0}
+                  >
+                    <Camera className="mr-2 h-5 w-5" />
+                    Start Camera
+                  </Button>
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    variant="outline"
+                    size="lg"
+                    className="px-8 py-3 text-lg"
+                  >
+                    <FileImage className="mr-2 h-5 w-5" />
+                    Upload Image
+                  </Button>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
               </div>
             )}
 
